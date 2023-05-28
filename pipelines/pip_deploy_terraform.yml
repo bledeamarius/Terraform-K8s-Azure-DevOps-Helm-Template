@@ -1,0 +1,18 @@
+name: $(Build.DefinitionName)_$(Build.Reason)_$(Date:yyyyMMdd)$(Rev:.r)
+
+trigger: none
+
+parameters:
+- name: Use_Case_Name
+  type: string
+  default: DEMO_USECASE
+
+pool:
+  vmImage: ubuntu-latest
+
+stages:
+- template: stages/_terraform_stage.yml
+  parameters:
+    AzureSubscription: '<AZURE_DEVOPS_SERVICE_CONNECTION_NAME'
+    Use_Case_Name    : ${{ parameters.Use_Case_Name }}
+  

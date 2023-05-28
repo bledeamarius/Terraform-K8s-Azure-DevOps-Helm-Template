@@ -1,0 +1,61 @@
+parameters:
+- name: TargetEnvironment
+  type: string
+- name: imageName
+  type: string
+- name: UseCaseName
+  type: string
+- name: imageTag
+  type: string
+
+stages:
+- stage: HelmDeployment_${{ parameters.TargetEnvironment }}
+
+  jobs:
+  - deployment: Deploy_${{ parameters.TargetEnvironment }}
+    environment: ${{ parameters.TargetEnvironment }}
+    variables:
+    - group: 'KeyVault vars'
+    - name: DOCKER_REGISTRY_NAME
+      value: $(acr-admin-loginrul) # from keyvault
+
+    - name: image_path
+      value: $(DOCKER_REGISTRY_NAME)/${{ parameters.imageName }}
+    - name: chart_path
+      value: ./helm/${{ parameters.UseCaseName }}
+      
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+          - download: none
+          - checkout: self
+            clean: true
+            fetchDepth: 1
+
+          - task: Docker@2
+            displayName: Login to ACR
+            inputs:
+              command: login
+              containerRegistry: '<AZURE_DEVOPS_SERVICE_CCONECTION_ACR>'
+
+          - task: HelmDeploy@0
+            displayName: Package Helm chart
+            inputs:
+              command: package
+              chartPath: $(chart_path)
+              arguments: "--version ${{ parameters.imageTag }}"
+              destination: $(chart_path)
+
+          - task: HelmDeploy@0
+            displayName: 'helm upgrade'
+            inputs:
+              connectionType: 'Kubernetes Service Connection'
+              kubernetesServiceConnection: '<AZURE_DEVOPS_SERVICE_CCONECTION_AKS>'
+              namespace: ${{ parameters.UseCaseName }}-${{ parameters.TargetEnvironment }}
+              command: upgrade
+              chartType: FilePath
+              chartPath: $(chart_path)/${{ parameters.UseCaseName }}-${{ parameters.imageTag }}.tgz
+              releaseName:  ${{ parameters.UseCaseName }}
+              valueFile: $(chart_path)/values.${{ lower(parameters.TargetEnvironment) }}.yaml
+              arguments: '--atomic --wait --timeout 2m --create-namespace --reset-values --debug --set image.tag=${{ parameters.imageTag }} --set image.repository=$(image_path)'
